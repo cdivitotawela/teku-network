@@ -1,0 +1,26 @@
+---
+version: '3'
+
+services:
+  besu:
+    image: hyperledger/besu:${BESU_TAG:-latest}
+    container_name: besu
+    ports:
+      - "30303:30303/tcp"
+      - "30303:30303/udp"
+      - "8545:8545"
+      - "8546:8546"
+    command: ['--data-path=/opt/besu/data']
+    environment:
+      BESU_GENESIS_FILE: /etc/besu/genesis.json
+      BESU_MINER_ENABLED: 'true'
+      BESU_MINER_COINBASE: fe3b557e8fb62b89f4916b721be55ceb828dbd73
+      BESU_RPC_HTTP_ENABLED: 'true'
+      BESU_HOST_WHITELIST: 'all'
+      BESU_RPC_HTTP_API: 'ADMIN,ETH,MINER,NET,WEB3'
+      BESU_RPC_HTTP_CORS_ORIGINS: "*"
+      BESU_RPC_HTTP_HOST: '0.0.0.0'
+      BESU_PRUNING_ENABLED: 'true'
+    volumes:
+      - ./genesis.json:/etc/besu/genesis.json
+    restart: always

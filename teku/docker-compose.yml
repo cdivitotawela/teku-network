@@ -1,0 +1,20 @@
+---
+version: '3'
+
+services:
+  teku:
+    image: pegasyseng/teku:${TEKU_TAG:-latest}
+    container_name: teku
+    entrypoint: '/opt/teku/docker-entrypoint.sh'
+    ports:
+      - '9000:9000/tcp'
+      - '9000:9000/udp'
+      - '5051:5051'
+    environment:
+      TEKU_ETH1_IP: "${TEKU_ETH1_IP:-127.0.0.1}"
+      TEKU_P2P_ADVERTISE_IP: "${TEKU_P2P_ADVERTISE_IP:-127.0.0.1}"
+      TEKU_BOOT_NODE_ENODE: "${TEKU_BOOT_NODE_ENODE}"
+    volumes:
+      - ./docker-entrypoint.sh:/opt/teku/docker-entrypoint.sh
+      - ./config/teku.yml:/tmp/teku.yml
+    restart: always

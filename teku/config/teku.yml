@@ -1,0 +1,50 @@
+# network
+network: "minimal"
+
+# p2p
+# p2p-enabled options:
+# false - no discovery, only connect to static peers
+# true - Enable discovery v5
+p2p-enabled: True
+p2p-interface: "0.0.0.0"
+p2p-port: 9000
+p2p-advertised-ip: "127.0.0.1"
+p2p-advertised-port: 9000
+p2p-discovery-enabled: True
+
+# interop
+# when genesis time is set to 0, artemis takes genesis time as currentTime + 5 seconds.
+Xinterop-genesis-time: 0
+Xinterop-owned-validator-start-index: 0
+Xinterop-owned-validator-count: 64
+Xinterop-number-of-validators: 64
+Xinterop-enabled: False
+
+# deposit
+eth1-deposit-contract-address: "0xdddddddddddddddddddddddddddddddddddddddd"
+eth1-endpoint: "http://127.0.0.1:8545"
+
+# logging
+log-color-enabled: False
+log-destination: CONSOLE
+logging: INFO
+log-include-validator-duties-enabled: True
+
+# metrics
+metrics-enabled: True
+metrics-port: 8008
+metrics-interface : "0.0.0.0"
+metrics-categories: ["BEACON","LIBP2P","NETWORK","EVENTBUS","JVM","PROCESS","STORAGE","VALIDATOR"]
+metrics-host-allowlist: ["*"]
+
+# database
+data-path: '/opt/teku/data'
+data-storage-mode: "prune"
+
+# beaconrestapi
+rest-api-port: 5051
+rest-api-docs-enabled: False
+rest-api-enabled: True
+rest-api-interface: "0.0.0.0"
+rest-api-host-allowlist: ["*"]
+

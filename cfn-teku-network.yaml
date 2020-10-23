@@ -1,0 +1,464 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Teku Private Network
+
+Parameters:
+
+  BesuImageTag:
+    Type: String
+    Default: 'latest'
+
+  GitRepository:
+    Type: String
+    Description: 'Path to the git repository'
+    Default: 'https://github.com/ConsenSys/teku-network'
+
+  GitBranch:
+    Type: String
+    Description: 'Git branch or tag'
+    Default: 'master'
+
+  BesuInstanceType:
+    Type: String
+    Default: 't3.micro'
+    AllowedValues:
+      - 't3.micro'
+      - 't3.medium'
+      - 'm5.large'
+
+  Environment:
+    Type: String
+    Default: 'dev'
+    AllowedValues:
+      - 'dev'
+
+  KeyName:
+    Type: String
+    Default: ''
+
+  Network:
+    Type: String
+    Default: 'private'
+
+  Owner:
+    Type: String
+    Default: ''
+
+  TekuInstanceSpotPrice:
+    Type: String
+    Description: 'Check the current max spot price for relevant instance and set accordingly'
+    Default: '0.05'
+
+  TekuInstanceType:
+    Type: String
+    Default: 't3.medium'
+    AllowedValues:
+      - 't3.medium'
+      - 'm5.large'
+
+  TekuPeerNodesCount:
+    Type: String
+    Description: 'Desired number of Teku peer nodes'
+    Default: '1'
+
+  TekuPeerNodesCountMax:
+    Type: String
+    Description: 'Max number of Teku peer nodes. Max need to be increased if desired count is more than max'
+    Default: '5'
+
+  TekuImageTag:
+    Type: String
+    Default: 'latest'
+
+Mappings:
+  AWSRegion2AMI:
+    ap-southeast-2:
+      ami: ami-0bb9eb7747efaf05f
+    us-east-2:
+      ami: ami-0d741c67de23c6f69
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: '10.0.0.0/16'
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-teku-network-${Network}'
+        - Key: owner
+          Value: !Ref Owner
+        - Key: network
+          Value: !Ref Network
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: '10.0.0.0/20'
+      AvailabilityZone: !Select
+        - '0'
+        - !GetAZs
+          Ref: 'AWS::Region'
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-teku-subnet-${Network}'
+        - Key: owner
+          Value: !Ref Owner
+        - Key: network
+          Value: !Ref Network
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: '10.0.16.0/20'
+      AvailabilityZone: !Select
+        - '1'
+        - !GetAZs
+          Ref: 'AWS::Region'
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-teku-subnet-${Network}'
+        - Key: owner
+          Value: !Ref Owner
+        - Key: network
+          Value: !Ref Network
+
+  PublicSubnet3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: '10.0.32.0/20'
+      AvailabilityZone: !Select
+        - '2'
+        - !GetAZs
+          Ref: 'AWS::Region'
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-teku-subnet-${Network}'
+        - Key: owner
+          Value: !Ref Owner
+        - Key: network
+          Value: !Ref Network
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-teku-internet-gw-${Network}'
+        - Key: owner
+          Value: !Ref Owner
+        - Key: network
+          Value: !Ref Network
+
+  InternetGatewayAttachement:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-teku-route-table-${Network}'
+        - Key: owner
+          Value: !Ref Owner
+        - Key: network
+          Value: !Ref Network
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn:
+      - InternetGatewayAttachement
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetRouteTableAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicNetworkAcl:
+    Type: AWS::EC2::NetworkAcl
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-teku-nacl-public-${Network}'
+        - Key: owner
+          Value: !Ref Owner
+        - Key: network
+          Value: !Ref Network
+
+  InboundSSHPublicNetworkAclEntry:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref PublicNetworkAcl
+      RuleNumber: '102'
+      Protocol: '6'
+      RuleAction: 'allow'
+      Egress: false
+      CidrBlock: '0.0.0.0/0'
+      PortRange:
+        From: 22
+        To: 22
+
+  OutboundPublicNetworkAclEntry:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref PublicNetworkAcl
+      RuleNumber: '100'
+      Protocol: '6'
+      RuleAction: 'allow'
+      Egress: true
+      CidrBlock: '0.0.0.0/0'
+      PortRange:
+        From: 0
+        To: 65535
+
+  BesuSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: 'Besu Network'
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8545
+          ToPort: 8545
+          SourceSecurityGroupId: !Ref TekuSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-sg-besu-${Network}'
+        - Key: owner
+          Value: !Ref Owner
+        - Key: network
+          Value: !Ref Network
+
+  TekuSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: 'Teku Network'
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-sg-teku-${Network}'
+        - Key: owner
+          Value: !Ref Owner
+        - Key: network
+          Value: !Ref Network
+
+  TekuSecurityGroupIngressNet:
+    Type: AWS::EC2::SecurityGroupIngress
+    DependsOn: TekuSecurityGroup
+    Properties:
+      GroupId: !Ref TekuSecurityGroup
+      IpProtocol: -1
+      FromPort: 9000
+      ToPort: 9000
+      SourceSecurityGroupId: !Ref TekuSecurityGroup
+
+  TekuSecurityGroupIngressRest:
+    Type: AWS::EC2::SecurityGroupIngress
+    DependsOn: TekuSecurityGroup
+    Properties:
+      GroupId: !Ref TekuSecurityGroup
+      IpProtocol: -1
+      FromPort: 5051
+      ToPort: 5051
+      SourceSecurityGroupId: !Ref TekuSecurityGroup
+
+  SshSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: 'SSH Access'
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: '0.0.0.0/0'
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-sg-ssh-${Network}'
+        - Key: owner
+          Value: !Ref Owner
+        - Key: network
+          Value: !Ref Network
+
+  # Besu node is single EC2 instance. Can be enhanced with a auto scaling group and load-balancer
+  BesuNode:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !FindInMap [AWSRegion2AMI, !Ref "AWS::Region", ami]
+      KeyName: !Ref KeyName
+      InstanceType: !Ref BesuInstanceType
+      NetworkInterfaces:
+        - DeviceIndex: 0
+          AssociatePublicIpAddress: true
+          SubnetId: !Ref PublicSubnet1
+          GroupSet:
+            - !GetAtt SshSecurityGroup.GroupId
+            - !GetAtt BesuSecurityGroup.GroupId
+      UserData:
+        Fn::Base64: !Sub
+          - |
+            #!/bin/bash
+
+            # Install docker-compose. Docker compose version is fixed and no requirement of changing frequently
+            curl --fail -L "https://github.com/docker/compose/releases/download/1.27.4/docker-compose-$(uname -s)-$(uname -m)" -o /bin/docker-compose
+            chmod +x /bin/docker-compose
+
+            # Install git
+            yum install -y git
+
+            # Export the variables to pass on to docker container
+            export BESU_TAG=${BESU_TAG}
+            export GIT_REPOSITORY=${GIT_REPOSITORY}
+            export GIT_BRANCH=${GIT_BRANCH}
+
+            echo $BESU_TAG $GIT_REPOSITORY $GIT_BRANCH >> /tmp/besu.log
+
+            # Convert to raw url
+            REMOTE_FILE="$(echo $GIT_REPOSITORY | sed 's/github\.com/raw\.githubusercontent\.com/g')/$GIT_BRANCH/run-besu.sh"
+
+            echo $REMOTE_FILE >> /tmp/besu.log
+
+            # Run remote file
+            curl -s $REMOTE_FILE | bash -
+
+          - GIT_REPOSITORY: !Ref GitRepository
+            GIT_BRANCH: !Ref GitBranch
+            BESU_TAG: !Ref BesuImageTag
+
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-besu-node-${Network}'
+        - Key: owner
+          Value: !Ref Owner
+        - Key: network
+          Value: !Ref Network
+
+  TekuBootNode:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !FindInMap [AWSRegion2AMI, !Ref "AWS::Region", ami]
+      KeyName: !Ref KeyName
+      InstanceType: !Ref TekuInstanceType
+      NetworkInterfaces:
+        - DeviceIndex: 0
+          AssociatePublicIpAddress: true
+          SubnetId: !Ref PublicSubnet1
+          GroupSet:
+            - !GetAtt SshSecurityGroup.GroupId
+            - !GetAtt TekuSecurityGroup.GroupId
+      UserData:
+        Fn::Base64: !Sub
+          - |
+            #!/bin/bash
+
+            # Install docker-compose. Docker compose version is fixed and no requirement of changing frequently
+            curl --fail -L "https://github.com/docker/compose/releases/download/1.27.4/docker-compose-$(uname -s)-$(uname -m)" -o /bin/docker-compose
+            chmod +x /bin/docker-compose
+
+            # Install git
+            yum install -y jq git
+
+            # Export the variables to pass on to docker container
+            export GIT_REPOSITORY=${GIT_REPOSITORY}
+            export GIT_BRANCH=${GIT_BRANCH}
+            export TEKU_TAG=${TEKU_IMAGE_TAG}
+            export TEKU_ETH1_IP=${BESU_IP}
+            export TEKU_IS_BOOT_NODE=true
+
+            # Convert to raw url
+            REMOTE_FILE="$(echo $GIT_REPOSITORY | sed 's/github\.com/raw\.githubusercontent\.com/g')/$GIT_BRANCH/run-teku.sh"
+
+            # Run script to start Teku
+            curl -s $REMOTE_FILE | bash -
+
+          - GIT_REPOSITORY: !Ref GitRepository
+            GIT_BRANCH: !Ref GitBranch
+            TEKU_IMAGE_TAG: !Ref TekuImageTag
+            BESU_IP: !GetAtt BesuNode.PrivateIp
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-teku-boot-node-${Network}'
+        - Key: owner
+          Value: !Ref Owner
+        - Key: network
+          Value: !Ref Network
+
+  TekuLaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    DependsOn: TekuBootNode
+    Properties:
+      ImageId: !FindInMap [AWSRegion2AMI, !Ref "AWS::Region", ami]
+      SecurityGroups:
+        - !Ref SshSecurityGroup
+        - !Ref TekuSecurityGroup
+      KeyName: !Ref KeyName
+      AssociatePublicIpAddress: true
+      InstanceType: !Ref TekuInstanceType
+      SpotPrice: !Ref TekuInstanceSpotPrice
+      UserData:
+        Fn::Base64: !Sub
+          - |
+            #!/bin/bash
+
+            # Install docker-compose. Docker compose version is fixed and no requirement of changing frequently
+            curl --fail -L "https://github.com/docker/compose/releases/download/1.27.4/docker-compose-$(uname -s)-$(uname -m)" -o /bin/docker-compose
+            chmod +x /bin/docker-compose
+
+            # Install jq which requires to extract enode information
+            yum install -y jq git
+
+            # Export the variables to pass on to docker container
+            export GIT_REPOSITORY=${GIT_REPOSITORY}
+            export GIT_BRANCH=${GIT_BRANCH}
+            export TEKU_TAG=${TEKU_IMAGE_TAG}
+            export TEKU_ETH1_IP=${BESU_IP}
+            export TEKU_IS_BOOT_NODE=false
+            export TEKU_BOOT_NODE_IP=${TEKU_BOOT_NODE_IP}
+
+            # Convert to raw url
+            REMOTE_FILE="$(echo $GIT_REPOSITORY | sed 's/github\.com/raw\.githubusercontent\.com/g')/$GIT_BRANCH/run-teku.sh"
+
+            # Run script to start Teku
+            curl -s $REMOTE_FILE | bash -
+
+          - GIT_REPOSITORY: !Ref GitRepository
+            GIT_BRANCH: !Ref GitBranch
+            TEKU_IMAGE_TAG: !Ref TekuImageTag
+            BESU_IP: !GetAtt BesuNode.PrivateIp
+            TEKU_BOOT_NODE_IP: !GetAtt TekuBootNode.PrivateIp
+
+  TekuAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+        - !Ref PublicSubnet3
+      LaunchConfigurationName: !Ref TekuLaunchConfiguration
+      MinSize: '1'
+      MaxSize: !Ref TekuPeerNodesCountMax
+      DesiredCapacity: !Ref TekuPeerNodesCount
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-teku-node-${Network}'
+          PropagateAtLaunch: true
+        - Key: owner
+          Value: !Ref Owner
+          PropagateAtLaunch: true
+        - Key: network
+          Value: !Ref Network
+          PropagateAtLaunch: true
